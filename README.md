@@ -1,11 +1,61 @@
-# 🧊 Image → 3D Agent (TripoSplat 기반)
+# 🧊 Image → 3D Agent
 
-이미지 한 장을 **3D 가우시안 스플랫(.ply / .splat)** 으로 변환하는 로컬 도구입니다.
+이미지 한 장을 **3D 모델**로 변환하는 로컬 도구입니다.
 단일 변환은 물론, **수십~수백 장을 한 번에 처리하면서 "깨진 3D 모델"을 AI가 스스로 판별하고
 자동으로 재생성하는 에이전트**까지 포함합니다.
 
-> 엔진: [VAST-AI-Research/TripoSplat](https://github.com/VAST-AI-Research/TripoSplat)
-> 배치 에이전트 / QA / 자가 복구 파이프라인: **AI FUTURE STREAMER 박성우 (Park Seong-Woo)**
+## 🔀 두 가지 3D 엔진
+
+| 엔진 | 출력 | 런처 | 포트 | 비고 |
+|---|---|---|---|---|
+| 🧱 **Hunyuan3D 2.1** (기본) | **메시 + (텍스처)** `.glb` | `run_mesh_app.bat` / `run_mesh_agent.bat` | 7861 | shape 동작 ✅ / 텍스처는 CUDA 빌드 필요 |
+| 🧊 **TripoSplat** (스플랫) | 가우시안 스플랫 `.ply/.splat` | `run_app.bat` / `run_agent.bat` | 7860 | 전체 동작 ✅ |
+
+두 엔진 모두 동일한 **배치 에이전트 + 자동 QA + 자가복구 + 결과 브라우저** 위에 올라가 있고,
+각자 격리된 가상환경(`venv_hy` / `venv`)을 씁니다.
+
+> 엔진: [Tencent-Hunyuan/Hunyuan3D-2.1](https://github.com/Tencent-Hunyuan/Hunyuan3D-2.1) ·
+> [VAST-AI-Research/TripoSplat](https://github.com/VAST-AI-Research/TripoSplat)
+> 배치 에이전트 / 메시·스플랫 QA / 자가 복구 파이프라인: **AI FUTURE STREAMER 박성우 (Park Seong-Woo)**
+
+---
+
+## 🧱 Hunyuan3D 2.1 메시 파이프라인 (기본)
+
+이미지 → **고품질 3D 메시(.glb)**. 출력이 가우시안 스플랫이 아니라 **삼각형 메시**라
+QA·뷰어가 메시 전용으로 새로 구현돼 있습니다.
+
+```bat
+run_mesh_app.bat
+```
+→ http://127.0.0.1:7861 (탭: Single image · Batch Agent · Results Browser)
+
+배치(폴더 → 메시 대량 생성, 자동 QA + 자가복구 + 이어하기):
+```bat
+run_mesh_agent.bat  C:\내이미지폴더
+run_mesh_agent.bat  C:\내이미지폴더  C:\출력폴더  --steps 30 --octree-resolution 384
+```
+출력: `mesh_outputs\success\<이름>\model.glb` (+ preprocessed/preview/info.json), `failed\`, `manifest.json`.
+
+**메시 QA**: 빈 메시·degenerate(면수 부족)·비유한값·collapse·flat(축비율≈0)·과도 분절을
+기하 검사 + 표면샘플 4방향 렌더로 판정하고, 깨지면 시드/스텝/guidance를 바꿔 재생성합니다.
+
+### ⚠️ 텍스처(PBR)는 현재 보류
+Hunyuan 텍스처 파이프라인은 **custom CUDA 래스터라이저 빌드**가 필요합니다
+(이 머신엔 CUDA Toolkit·MSVC 미설치). 그래서 현재는 **shape(형상)** 만 생성합니다.
+텍스처를 켜려면 **CUDA Toolkit 12.4 + Visual Studio Build Tools**를 설치한 뒤
+`hy3dpaint/custom_rasterizer`와 `DifferentiableRenderer`를 빌드해야 합니다.
+
+설치 메모(이 폴더는 이미 세팅됨, 가중치는 `~/.cache/hy3dgen`에 자동 다운로드):
+```bash
+py -3.12 -m venv venv_hy
+venv_hy/Scripts/python.exe -m pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu124
+venv_hy/Scripts/python.exe -m pip install "numpy==1.26.4" transformers==4.46.0 diffusers==0.30.0 accelerate omegaconf einops safetensors "huggingface-hub==0.30.2" trimesh scikit-image scipy opencv-python rembg onnxruntime pymeshlab timm torchdiffeq "gradio==5.33.0"
+```
+
+---
+
+## 🧊 TripoSplat 가우시안 스플랫 파이프라인
 
 ---
 

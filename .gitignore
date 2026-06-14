@@ -1,5 +1,6 @@
-# Python virtual environment
+# Python virtual environments
 venv/
+venv_hy/
 .venv/
 env/
 
@@ -21,6 +22,9 @@ TripoSplat/ckpts/
 *.pth
 *.bin
 
+# Hunyuan3D training-only sample data (not needed for inference)
+Hunyuan3D-2.1/hy3dshape/tools/mini_trainset/
+
 # 3D model outputs
 *.ply
 *.splat
@@ -33,10 +37,16 @@ preprocessed_image.webp
 # Agent / app run outputs
 agent_outputs/
 gradio_outputs/
+mesh_outputs/
+gradio_mesh_outputs/
 **/agent_outputs/
 **/gradio_outputs/
+**/mesh_outputs/
+**/gradio_mesh_outputs/
 **/_uploaded/
 **/_selftest_out/
+**/_meshtest_in/
+**/_meshtest_out/
 
 # OS / editor
 .DS_Store
