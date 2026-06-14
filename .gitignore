@@ -1,0 +1,37 @@
+# Python virtual environment
+venv/
+.venv/
+env/
+
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+.cache/
+**/.cache/
+
+# Logs
+*.log
+
+# Model weights / checkpoints (too large for GitHub)
+TripoSplat/ckpts/
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.bin
+
+# 3D model outputs
+*.ply
+*.splat
+*.glb
+*.obj
+
+# Generated/preprocessed media
+preprocessed_image.webp
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
