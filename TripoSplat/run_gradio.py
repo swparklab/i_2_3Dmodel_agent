@@ -102,11 +102,11 @@ def generate(image, seed: int, steps: int, guidance_scale: float,
 # ----------------------------------------------------------------------------
 
 with gr.Blocks(title="TripoSplat") as demo:
-    gr.Markdown("# TripoSplat")
+    gr.Markdown("# 🪄 PARK3D · Splat")
     gr.Markdown(
-        "TripoSplat converts a single 2D image into high-quality and variable number of 3D Gaussians developed by [TripoAI](https://www.tripo3d.ai/). "
-        "It can serve as a powerful pipeline tool for asset creation, AR/VR, game development, simulation environments, and beyond.\n\n"
-        "[Read Paper](https://arxiv.org/abs/2605.16355) | [Research Blog](https://www.tripo3d.ai/research/triposplat)"
+        "이미지 한 장을 고품질 3D 가우시안 스플랫으로 변환합니다. "
+        "에셋 제작, AR/VR, 게임, 시뮬레이션 등에 바로 활용하세요.\n\n"
+        "> Created & engineered by **박성우 (Park Seong-Woo)** · AI FUTURE STREAMER 🚀"
     )
 
     with gr.Row():

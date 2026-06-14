@@ -400,12 +400,11 @@ def retry_failed(state, steps, guidance, num_gaussians, max_attempts, qa_vision)
 # ---------------------------------------------------------------------------
 
 def build_ui():
-    with gr.Blocks(title="TripoSplat Studio") as demo:
+    with gr.Blocks(title="PARK3D — Splat") as demo:
         gr.Markdown(
-            "# 🧊 TripoSplat Studio\n"
-            "Single-image **and** batch image→3D with automatic QA + self-healing retries. "
-            "Engine: [TripoSplat](https://github.com/VAST-AI-Research/TripoSplat) · "
-            "Agent/QA: AI FUTURE STREAMER (Park Seong-Woo)."
+            "# 🪄 PARK3D <span style='font-size:0.5em;color:#94a3b8'>· Splat 모드</span>\n"
+            "이미지 한 장 → 3D 가우시안 스플랫. 자동 품질검사 · 자가복구 · 원클릭.\n\n"
+            "> Created & engineered by **박성우 (Park Seong-Woo)** · AI FUTURE STREAMER 🚀"
         )
 
         # ---- Tab 1: Single ----

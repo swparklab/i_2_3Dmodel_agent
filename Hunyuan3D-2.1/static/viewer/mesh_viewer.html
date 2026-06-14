@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>3D Mesh Viewer</title>
+<title>PARK3D Viewer</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { width: 100%; height: 100%; overflow: hidden;
@@ -23,9 +23,9 @@
 </style>
 </head>
 <body>
-<div id="loading"><div id="spinner"></div><div id="loading-label">Loading mesh…</div></div>
+<div id="loading"><div id="spinner"></div><div id="loading-label">3D 불러오는 중…</div></div>
 <div id="error"></div>
-<div id="hud">drag to orbit &nbsp;·&nbsp; scroll to zoom &nbsp;·&nbsp; right-drag to pan</div>
+<div id="hud">드래그: 회전 &nbsp;·&nbsp; 스크롤: 확대/축소 &nbsp;·&nbsp; 우클릭 드래그: 이동</div>
 
 <script type="importmap">
 {
@@ -105,8 +105,8 @@ function init(url) {
     scene.add(root);
     loadingEl.style.display = "none";
   },
-  (xhr) => { if (xhr.total) loadLabel.textContent = `Loading mesh (${(xhr.loaded/1048576).toFixed(1)} MB)…`; },
-  (err) => showError("Failed to load mesh: " + (err?.message || err)));
+  (xhr) => { if (xhr.total) loadLabel.textContent = `3D 불러오는 중 (${(xhr.loaded/1048576).toFixed(1)} MB)…`; },
+  (err) => showError("3D 불러오기 실패: " + (err?.message || err)));
 
   window.addEventListener("resize", () => {
     camera.aspect = window.innerWidth / window.innerHeight;

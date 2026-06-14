@@ -55,8 +55,8 @@ EXAMPLES = [str(p) for p in sorted(EXAMPLES_DIR.glob("*.png"))][:6]
 
 PLACEHOLDER_HTML = (
     "<div style='display:flex;align-items:center;justify-content:center;height:520px;"
-    "color:#94a3b8;font:16px system-ui;background:#111318;border-radius:12px'>"
-    "3D mesh viewer will appear here after generation</div>"
+    "color:#94a3b8;font:16px system-ui;background:#111318;border-radius:12px;text-align:center'>"
+    "여기에 3D 모델이 나타납니다 🪄<br>왼쪽에서 이미지를 올리고 ✨ 3D 만들기를 누르세요</div>"
 )
 
 
@@ -76,11 +76,11 @@ def _qa_badge(geo: dict, ren: dict, vision: dict | None) -> str:
     if vision and vision.get("ok") is False:
         reasons.append(f"vision:{vision.get('reason','')}")
     if not reasons:
-        return ("### ✅ QA passed\n"
-                f"- geometry: `{geo['metrics']}`\n"
-                f"- render coverage: `{ren['metrics'].get('render_cov_mean')}`"
-                + (f"\n- vision: {vision.get('reason','ok')}" if vision and vision.get('ok') else ""))
-    return "### ❌ QA failed\n- " + "\n- ".join(reasons)
+        return ("### ✅ 품질검사 통과\n"
+                f"- 형상 지표: `{geo['metrics']}`\n"
+                f"- 렌더 커버리지: `{ren['metrics'].get('render_cov_mean')}`"
+                + (f"\n- AI 비전: {vision.get('reason','ok')}" if vision and vision.get('ok') else ""))
+    return "### ❌ 품질검사 실패 (자동 재생성 대상)\n- " + "\n- ".join(reasons)
 
 
 # ---------------------------------------------------------------------------
@@ -112,8 +112,8 @@ def generate_single(image_path, seed, steps, guidance, octree, use_vision,
     glb_path = out_dir / "model.glb"
     mesh.export(str(glb_path))
 
-    info = (f"{geo['metrics'].get('faces','?'):,} faces · "
-            f"{geo['metrics'].get('verts','?'):,} verts · {gen_dt:.1f}s")
+    info = (f"면 {geo['metrics'].get('faces','?'):,}개 · "
+            f"꼭짓점 {geo['metrics'].get('verts','?'):,}개 · {gen_dt:.1f}초")
     return (prepared.convert("RGB"), preview, _viewer_iframe(glb_path),
             gr.update(value=str(glb_path), interactive=True), info, _qa_badge(geo, ren, vision))
 
@@ -335,95 +335,119 @@ def retry_failed(state, steps, guidance, octree, max_attempts, qa_vision):
 # UI
 # ---------------------------------------------------------------------------
 
-def build_ui():
-    with gr.Blocks(title="Hunyuan3D Studio") as demo:
-        gr.Markdown(
-            "# 🧱 Hunyuan3D Studio (mesh)\n"
-            "Single-image **and** batch image→3D **mesh (.glb)** with automatic QA + "
-            "self-healing retries. Engine: "
-            "[Hunyuan3D 2.1](https://github.com/Tencent-Hunyuan/Hunyuan3D-2.1) shape · "
-            "Agent/QA: AI FUTURE STREAMER (Park Seong-Woo). *(shape only — texture needs CUDA build)*"
-        )
+PARK3D_CSS = """
+#park3d-hero { text-align:center; padding:18px 12px 6px; }
+#park3d-hero h1 { font-size:2.6rem; letter-spacing:2px; margin:0;
+  background:linear-gradient(90deg,#6366f1,#06b6d4 60%,#a855f7);
+  -webkit-background-clip:text; background-clip:text; color:transparent; }
+#park3d-hero .tag { color:#64748b; font-size:1.02rem; margin-top:4px; }
+#park3d-hero .by { color:#475569; font-size:.92rem; margin-top:8px; }
+.gradio-container { max-width:1280px !important; margin:auto; }
+button.primary, .primary button { font-size:1.05rem !important; padding:12px !important; }
+.step-hint { color:#6366f1; font-weight:600; margin:2px 0 6px; }
+footer { visibility:hidden; }
+"""
 
-        with gr.Tab("Single image"):
+PARK3D_HERO = """
+<div id='park3d-hero'>
+  <h1>🪄 PARK3D</h1>
+  <div class='tag'>이미지 한 장 → 완성형 3D 모델.  업로드하고 버튼 한 번이면 끝.</div>
+  <div class='by'>Created &amp; engineered by <b>박성우 (Park Seong-Woo)</b> · AI FUTURE STREAMER<br>
+  AI·피지컬 인텔리전스·자율 시스템의 미래를 만드는 엔지니어가 직접 설계한
+  <b>자동 품질검사 · 자가복구 · 원클릭 3D</b> 스튜디오 🚀</div>
+</div>
+"""
+
+
+def build_ui():
+    with gr.Blocks(title="PARK3D", theme=gr.themes.Soft(primary_hue="indigo",
+                   secondary_hue="cyan"), css=PARK3D_CSS) as demo:
+        gr.HTML(PARK3D_HERO)
+
+        with gr.Tab("① 이미지 1장 → 3D"):
+            gr.Markdown("<div class='step-hint'>1) 이미지를 올리고 → 2) ✨ 3D 만들기 → "
+                        "3) 오른쪽에서 돌려보고 내려받기</div>")
             with gr.Row():
                 with gr.Column(scale=1):
-                    s_img = gr.Image(label="Input image", type="filepath", height=320)
+                    s_img = gr.Image(label="📷 이미지 올리기", type="filepath", height=320)
                     if EXAMPLES:
-                        gr.Examples([[p] for p in EXAMPLES], inputs=[s_img], label="Examples")
-                    with gr.Accordion("Settings", open=False):
-                        s_seed = gr.Number(label="Seed", value=42, precision=0)
-                        s_steps = gr.Slider(5, 50, value=30, step=1, label="Diffusion steps")
-                        s_cfg = gr.Slider(1.0, 10.0, value=5.0, step=0.5, label="Guidance scale")
+                        gr.Examples([[p] for p in EXAMPLES], inputs=[s_img],
+                                    label="예시 (클릭하면 불러오기)")
+                    s_run = gr.Button("✨ 3D 만들기", variant="primary", size="lg")
+                    with gr.Accordion("고급 설정 (안 건드려도 됩니다)", open=False):
                         s_oct = gr.Dropdown(["256", "320", "384"], value="384",
-                                            label="Octree resolution (detail)")
+                                            label="디테일 (높을수록 정밀, 느림)")
+                        s_steps = gr.Slider(5, 50, value=30, step=1, label="생성 스텝")
+                        s_cfg = gr.Slider(1.0, 10.0, value=5.0, step=0.5, label="이미지 반영 강도")
+                        s_seed = gr.Number(label="시드", value=42, precision=0)
                         s_vision = gr.Checkbox(value=False,
-                            label="Run Claude vision QA (needs ANTHROPIC_API_KEY)")
-                    s_run = gr.Button("Generate mesh", variant="primary")
-                    s_prepared = gr.Image(label="Preprocessed input", interactive=False, height=200)
+                            label="AI 비전 품질검사 (ANTHROPIC_API_KEY 필요)")
+                    s_prepared = gr.Image(label="배경 제거된 입력", interactive=False, height=180)
                     s_info = gr.Markdown(); s_qa = gr.Markdown()
                 with gr.Column(scale=2):
                     s_viewer = gr.HTML(value=PLACEHOLDER_HTML)
-                    s_preview = gr.Image(label="QA preview (reference + 4 views)", interactive=False)
-                    s_dl = gr.DownloadButton(label="Download .glb", value=None, interactive=False)
+                    s_preview = gr.Image(label="품질 미리보기 (원본 + 4방향)", interactive=False)
+                    s_dl = gr.DownloadButton(label="⬇️ 3D 파일 내려받기 (.glb)",
+                                             value=None, interactive=False)
             s_run.click(generate_single,
                         inputs=[s_img, s_seed, s_steps, s_cfg, s_oct, s_vision],
                         outputs=[s_prepared, s_preview, s_viewer, s_dl, s_info, s_qa])
 
-        with gr.Tab("Batch Agent"):
-            gr.Markdown("Process a folder (or upload many). Each image → mesh, auto-QA "
-                        "(geometry + 4-view render + optional vision), regenerated up to N "
-                        "times if broken. Resume is automatic.")
+        with gr.Tab("② 폴더 대량 변환"):
+            gr.Markdown("<div class='step-hint'>폴더 안 이미지를 전부 3D로. PARK3D가 "
+                        "자동으로 품질을 검사하고, 깨진 건 알아서 다시 만듭니다. "
+                        "중단해도 이어서 진행돼요.</div>")
             with gr.Row():
                 with gr.Column(scale=1):
-                    b_folder = gr.Textbox(label="Input folder (path on this machine)",
-                                          placeholder=r"C:\my_images")
-                    b_files = gr.File(label="…or upload images", file_count="multiple",
+                    b_folder = gr.Textbox(label="📁 이미지 폴더 경로",
+                                          placeholder=r"C:\내이미지폴더")
+                    b_files = gr.File(label="…또는 이미지 여러 장 올리기", file_count="multiple",
                                       file_types=["image"])
-                    b_out = gr.Textbox(label="Output folder", value="mesh_outputs")
-                    with gr.Accordion("Agent settings", open=False):
-                        b_steps = gr.Slider(5, 60, value=30, step=1, label="Steps")
-                        b_cfg = gr.Slider(1.0, 10.0, value=5.0, step=0.5, label="Guidance")
-                        b_oct = gr.Dropdown(["256", "320", "384"], value="384", label="Octree resolution")
-                        b_max = gr.Slider(1, 6, value=3, step=1, label="Max attempts / image")
-                        b_vision = gr.Dropdown(["auto", "on", "off"], value="auto", label="Vision QA")
-                        b_limit = gr.Number(label="Limit (0 = all)", value=0, precision=0)
-                    b_run = gr.Button("Run batch agent", variant="primary")
-                    b_status = gr.Markdown("Idle.")
+                    b_out = gr.Textbox(label="결과 저장 폴더", value="mesh_outputs")
+                    b_run = gr.Button("🚀 대량 변환 시작", variant="primary", size="lg")
+                    with gr.Accordion("고급 설정 (안 건드려도 됩니다)", open=False):
+                        b_oct = gr.Dropdown(["256", "320", "384"], value="384", label="디테일")
+                        b_steps = gr.Slider(5, 60, value=30, step=1, label="생성 스텝")
+                        b_cfg = gr.Slider(1.0, 10.0, value=5.0, step=0.5, label="이미지 반영 강도")
+                        b_max = gr.Slider(1, 6, value=3, step=1, label="장당 최대 재시도")
+                        b_vision = gr.Dropdown(["auto", "on", "off"], value="auto", label="AI 비전 검사")
+                        b_limit = gr.Number(label="앞에서 N장만 (0=전체)", value=0, precision=0)
+                    b_status = gr.Markdown("대기 중.")
                 with gr.Column(scale=2):
-                    b_table = gr.Dataframe(headers=TABLE_HEADERS, label="Progress",
+                    b_table = gr.Dataframe(headers=TABLE_HEADERS, label="진행 상황",
                                            interactive=False, wrap=True)
                     with gr.Row():
-                        b_succ = gr.Gallery(label="✅ Success", columns=3, height=320)
-                        b_fail = gr.Gallery(label="❌ Failed", columns=3, height=320)
+                        b_succ = gr.Gallery(label="✅ 성공", columns=3, height=320)
+                        b_fail = gr.Gallery(label="❌ 실패", columns=3, height=320)
             b_run.click(run_batch,
                         inputs=[b_folder, b_files, b_out, b_steps, b_cfg, b_oct, b_max, b_vision, b_limit],
                         outputs=[b_status, b_table, b_succ, b_fail])
 
-        with gr.Tab("Results Browser"):
-            gr.Markdown("Load a mesh output folder to review (loading/viewing needs no GPU; retry needs GPU).")
+        with gr.Tab("③ 결과 보기"):
+            gr.Markdown("<div class='step-hint'>지난 결과를 다시 열어보기. 썸네일을 클릭하면 "
+                        "3D로 돌려볼 수 있고, 실패한 것만 골라 다시 만들 수 있어요. (GPU 없이도 열람 가능)</div>")
             r_state = gr.State({})
             with gr.Row():
-                r_folder = gr.Textbox(label="Output folder", value="mesh_outputs", scale=4)
-                r_load = gr.Button("Load", variant="primary", scale=1)
+                r_folder = gr.Textbox(label="결과 폴더", value="mesh_outputs", scale=4)
+                r_load = gr.Button("📂 불러오기", variant="primary", scale=1)
             r_summary = gr.Markdown()
             with gr.Row():
                 with gr.Column(scale=1):
-                    r_table = gr.Dataframe(headers=["name", "status", "tries", "sec", "reasons"],
-                                           label="All results", interactive=False, wrap=True)
+                    r_table = gr.Dataframe(headers=["이름", "상태", "시도", "초", "사유"],
+                                           label="전체 결과", interactive=False, wrap=True)
                     with gr.Row():
-                        r_succ = gr.Gallery(label="✅ Success (click to view 3D)", columns=3, height=300)
-                        r_fail = gr.Gallery(label="❌ Failed", columns=3, height=300)
-                    r_downloads = gr.Files(label="Download .glb files")
+                        r_succ = gr.Gallery(label="✅ 성공 (클릭하면 3D로 보기)", columns=3, height=300)
+                        r_fail = gr.Gallery(label="❌ 실패", columns=3, height=300)
+                    r_downloads = gr.Files(label="⬇️ .glb 파일 내려받기")
                 with gr.Column(scale=1):
                     r_viewer = gr.HTML(value=PLACEHOLDER_HTML)
-                    with gr.Accordion("Retry settings", open=False):
-                        r_steps = gr.Slider(5, 60, value=40, step=1, label="Steps")
-                        r_cfg = gr.Slider(1.0, 10.0, value=6.0, step=0.5, label="Guidance")
-                        r_oct = gr.Dropdown(["256", "320", "384"], value="384", label="Octree resolution")
-                        r_max = gr.Slider(1, 6, value=3, step=1, label="Max attempts / image")
-                        r_vision = gr.Dropdown(["auto", "on", "off"], value="auto", label="Vision QA")
-                    r_retry = gr.Button("♻️ Retry failed cases only", variant="secondary")
+                    r_retry = gr.Button("♻️ 실패한 것만 다시 만들기", variant="secondary")
+                    with gr.Accordion("다시 만들기 설정", open=False):
+                        r_oct = gr.Dropdown(["256", "320", "384"], value="384", label="디테일")
+                        r_steps = gr.Slider(5, 60, value=40, step=1, label="생성 스텝")
+                        r_cfg = gr.Slider(1.0, 10.0, value=6.0, step=0.5, label="이미지 반영 강도")
+                        r_max = gr.Slider(1, 6, value=3, step=1, label="장당 최대 재시도")
+                        r_vision = gr.Dropdown(["auto", "on", "off"], value="auto", label="AI 비전 검사")
             r_load.click(load_results, inputs=[r_folder],
                          outputs=[r_summary, r_table, r_succ, r_fail, r_downloads, r_state])
             r_succ.select(view_selected, inputs=[r_state], outputs=[r_viewer])
