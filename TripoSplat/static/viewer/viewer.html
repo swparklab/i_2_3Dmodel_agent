@@ -100,6 +100,10 @@ function init(url) {
   controls.minDistance = 0.2;
   controls.maxDistance = 50;
   controls.target.set(0, 0, 0);
+  // Auto-spin so it's immediately, unmistakably 3D. Stop on first interaction.
+  controls.autoRotate = true;
+  controls.autoRotateSpeed = 2.2;
+  controls.addEventListener("start", () => { controls.autoRotate = false; });
 
   const splat = new SplatMesh({ url });
   // DEG saves PLYs with -Y up and the front of the object facing roughly
@@ -118,19 +122,20 @@ function init(url) {
     const box = new THREE.Box3().setFromObject(splatRoot);
     if (box.isEmpty() || !isFinite(box.min.x)) return;
     framed = true;
-    // const center = new THREE.Vector3();
-    // const size   = new THREE.Vector3();
-    // box.getCenter(center);
-    // box.getSize(size);
-    // console.log(size);
-    // const maxDim = Math.max(size.x, size.y, size.z);
-    // // With a 45° FOV, half-fov tan ≈ 0.414, so the minimum distance to fit
-    // // a sphere of diameter `maxDim` in view is maxDim / (2*0.414) ≈ 1.21*maxDim.
-    // // Use a small margin (1.15) so the object nearly fills the viewport.
-    // const dist = maxDim * 1.15;
-    // camera.position.copy(center).add(new THREE.Vector3(0, maxDim * 0.15, dist));
-    // controls.target.copy(center);
-    // controls.update();
+    // Fit the camera to the actual object bounds so it's always well-framed
+    // (a fixed camera can leave large/off-center splats half-off-screen,
+    // which reads as "flat / not 3D").
+    const center = new THREE.Vector3();
+    const size   = new THREE.Vector3();
+    box.getCenter(center);
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+    // 45° FOV: half-fov tan ≈ 0.414, so distance ≈ maxDim / (2*0.414) ≈ 1.21*maxDim.
+    // Add headroom (1.5) and a slight elevation so depth is obvious at a glance.
+    const dist = maxDim * 1.5;
+    camera.position.copy(center).add(new THREE.Vector3(dist * 0.35, maxDim * 0.25, dist));
+    controls.target.copy(center);
+    controls.update();
     loadingEl.style.display = "none";
   }
 
