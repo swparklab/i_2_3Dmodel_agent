@@ -265,8 +265,9 @@ def run_batch(folder, files, out_folder, steps, guidance, num_gaussians,
 
 def load_results(out_folder):
     out_root = Path(out_folder or "agent_outputs").resolve()
+    state = {"out_root": str(out_root), "success_ply": [], "failed": []}
     if not out_root.is_dir():
-        return (f"⚠️ Folder not found: `{out_root}`", [], [], [], None)
+        return (f"⚠️ Folder not found: `{out_root}`", [], [], [], None, state)
 
     success_gallery, failed_gallery, rows, downloads = [], [], [], []
 
@@ -276,9 +277,11 @@ def load_results(out_folder):
             if not d.is_dir():
                 continue
             prev = d / "preview.webp"
-            if prev.exists():
-                success_gallery.append((str(prev), d.name))
             ply = d / "model.ply"
+            if prev.exists():
+                # keep success_gallery and state["success_ply"] index-aligned
+                success_gallery.append((str(prev), d.name))
+                state["success_ply"].append(str(ply) if ply.exists() else None)
             if ply.exists():
                 downloads.append(str(ply))
             tries = sec = "-"
@@ -299,6 +302,7 @@ def load_results(out_folder):
                 continue
             reasons = ""
             tries = sec = "-"
+            source = None
             info_f = d / "info.json"
             if info_f.exists():
                 try:
@@ -306,10 +310,13 @@ def load_results(out_folder):
                     attempts = info.get("attempts", [])
                     tries = len(attempts)
                     sec = info.get("total_sec", "-")
+                    source = info.get("source")
                     if attempts:
                         reasons = ", ".join(attempts[-1].get("reasons", []))
                 except Exception:
                     pass
+            if source and Path(source).exists():
+                state["failed"].append({"name": d.name, "source": source})
             prev = d / "last_preview.webp"
             if prev.exists():
                 failed_gallery.append((str(prev), f"{d.name}: {reasons}"))
@@ -319,7 +326,73 @@ def load_results(out_folder):
     n_fail = sum(1 for r in rows if r[1].startswith("❌"))
     summary = (f"### {out_root.name}: {n_ok} success · {n_fail} failed"
                if rows else f"No results under `{out_root}` (expected success/ and failed/).")
-    return summary, rows, success_gallery, failed_gallery, downloads or None
+    return summary, rows, success_gallery, failed_gallery, downloads or None, state
+
+
+def view_selected(state, evt: gr.SelectData):
+    """Show the picked success item's .ply in the in-browser viewer.
+    The .ply is copied into a served path so it works for any source folder."""
+    plys = (state or {}).get("success_ply", [])
+    i = getattr(evt, "index", None)
+    if i is None or i >= len(plys) or not plys[i]:
+        return PLACEHOLDER_HTML
+    served = SINGLE_OUT / "_view" / f"{uuid4().hex[:8]}.ply"
+    served.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(plys[i], served)
+    return _viewer_iframe(served)
+
+
+def retry_failed(state, steps, guidance, num_gaussians, max_attempts, qa_vision):
+    """Generator: re-run the agent ONLY on the failed cases in the loaded folder.
+    On success, the stale failed/<name> entry is removed. Yields
+    (summary, table, success_gallery, failed_gallery, downloads, state)."""
+    targets = (state or {}).get("failed", [])
+    out_root = Path((state or {}).get("out_root") or "agent_outputs").resolve()
+    keep = (gr.update(),) * 5  # table, succ, fail, downloads, state — unchanged until reload
+    if not targets:
+        yield ("⚠️ No retryable failed cases. Click **Load** first; each failed case "
+               "needs an `info.json` with a still-valid source path.", *keep)
+        return
+
+    use_vision = (qa_vision == "on") or (qa_vision == "auto" and AB.vision_available())
+    preset = dict(seed=123, steps=int(steps), guidance_scale=float(guidance),
+                  shift=3.0, num_gaussians=int(num_gaussians))
+    fh = open(out_root / "agent.log", "a", encoding="utf-8")
+    AB._log(f"=== UI retry-failed: {len(targets)} cases ===", fh)
+
+    yield (f"⏳ Loading pipeline…  ·  retrying {len(targets)} failed case(s)", *keep)
+    pipe = get_pipe()
+
+    rows, n_ok, n_still = [], 0, 0
+    upd3 = (gr.update(), gr.update(), gr.update(), gr.update())  # succ, fail, downloads, state
+    for i, t in enumerate(targets, 1):
+        name, src = t["name"], Path(t["source"])
+        rows.append([name, "⚙️ retrying…", "-", "-", ""])
+        yield (f"Retrying {i}/{len(targets)} · {name}", rows, *upd3)
+        info = AB.process_image(pipe, src, out_root, preset, int(max_attempts),
+                                use_vision, AB.VISION_MODEL_DEFAULT, fh)
+        if info["status"] == "success":
+            n_ok += 1
+            # clear the now-stale failed/ entry
+            stale = out_root / "failed" / name
+            if stale.is_dir():
+                shutil.rmtree(stale, ignore_errors=True)
+            rows[-1] = [name, "✅ recovered", len(info["attempts"]),
+                        info["total_sec"], ""]
+        else:
+            n_still += 1
+            last = info["attempts"][-1] if info["attempts"] else {}
+            rows[-1] = [name, "❌ still failed", len(info["attempts"]),
+                        info["total_sec"], ", ".join(last.get("reasons", []))]
+        yield (f"Retrying {i}/{len(targets)} · {n_ok} recovered · {n_still} still failed",
+               rows, *upd3)
+
+    AB._log(f"=== retry done: {n_ok} recovered, {n_still} still failed ===", fh)
+    fh.close()
+    # full refresh so galleries/state/downloads reflect the new state
+    summary, full_rows, succ, fail, downloads, new_state = load_results(str(out_root))
+    yield (f"### ♻️ Retry done — {n_ok} recovered · {n_still} still failed\n{summary}",
+           full_rows, succ, fail, downloads, new_state)
 
 
 # ---------------------------------------------------------------------------
@@ -406,19 +479,40 @@ def build_ui():
         # ---- Tab 3: Results browser ----
         with gr.Tab("Results Browser"):
             gr.Markdown("Load an existing agent output folder to review results "
-                        "(works without a GPU).")
+                        "(loading/viewing works without a GPU; retry needs a GPU).")
+            r_state = gr.State({})
             with gr.Row():
                 r_folder = gr.Textbox(label="Output folder", value="agent_outputs", scale=4)
                 r_load = gr.Button("Load", variant="primary", scale=1)
             r_summary = gr.Markdown()
-            r_table = gr.Dataframe(headers=["name", "status", "tries", "sec", "reasons"],
-                                   label="All results", interactive=False, wrap=True)
             with gr.Row():
-                r_succ = gr.Gallery(label="✅ Success", columns=4, height=360)
-                r_fail = gr.Gallery(label="❌ Failed", columns=4, height=360)
-            r_downloads = gr.Files(label="Download .ply files")
+                with gr.Column(scale=1):
+                    r_table = gr.Dataframe(
+                        headers=["name", "status", "tries", "sec", "reasons"],
+                        label="All results", interactive=False, wrap=True)
+                    with gr.Row():
+                        r_succ = gr.Gallery(label="✅ Success (click to view 3D)",
+                                            columns=3, height=300)
+                        r_fail = gr.Gallery(label="❌ Failed", columns=3, height=300)
+                    r_downloads = gr.Files(label="Download .ply files")
+                with gr.Column(scale=1):
+                    r_viewer = gr.HTML(value=PLACEHOLDER_HTML)
+                    with gr.Accordion("Retry settings", open=False):
+                        r_steps = gr.Slider(1, 60, value=40, step=1, label="Steps")
+                        r_cfg = gr.Slider(1.0, 10.0, value=4.0, step=0.5, label="Guidance scale")
+                        r_ng = gr.Dropdown(["32768", "65536", "131072", "262144"],
+                                           value="262144", label="Number of gaussians")
+                        r_max = gr.Slider(1, 6, value=4, step=1, label="Max attempts / image")
+                        r_vision = gr.Dropdown(["auto", "on", "off"], value="auto",
+                                               label="Vision QA")
+                    r_retry = gr.Button("♻️ Retry failed cases only", variant="secondary")
+
             r_load.click(load_results, inputs=[r_folder],
-                         outputs=[r_summary, r_table, r_succ, r_fail, r_downloads])
+                         outputs=[r_summary, r_table, r_succ, r_fail, r_downloads, r_state])
+            r_succ.select(view_selected, inputs=[r_state], outputs=[r_viewer])
+            r_retry.click(retry_failed,
+                          inputs=[r_state, r_steps, r_cfg, r_ng, r_max, r_vision],
+                          outputs=[r_summary, r_table, r_succ, r_fail, r_downloads, r_state])
 
     return demo
 
